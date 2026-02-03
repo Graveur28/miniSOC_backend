@@ -1,0 +1,951 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  //url      = env("DATABASE_URL")
+}
+
+
+// generator client {
+//   provider = "prisma-client-js"
+// }
+
+
+model User {
+  id              String    @id @default(uuid())
+  prenom          String
+  nom             String 
+  userName        String    @unique
+  email           String    @unique
+  password        String
+  role            UserRole  @default(SOC_ANALYST)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assignedAlerts  Alerte[]
+  logs            Log[]    @relation("UserLogs")
+
+  // createdAlerts  Alert[]  @relation("CreatedAlerts")
+  // comments       Comment[]
+  // alertActions   AlertAction[]
+  // dashboardViews DashboardView[]
+  
+  // @@index([email])
+  // @@index([username])
+  // @@index([role])
+  // @@index([isActive])
+
+  alertes        Alerte[] @relation("CreatedAlerts")
+  alertActions   AlertAction[]
+  commentaires   Commentaire[]
+  dashboardViews DashboardView[]
+  reports        Report[]
+  systemConfigs  SystemConfig[]
+  auditLogs   AuditLog[]
+  iplists        IPList[]
+  notifications Notification[]
+}
+
+enum UserRole {
+  SOC_ADMIN
+  SOC_ANALYST
+  SOC_MONITOR
+  READ_ONLY
+}
+
+// ==================== LOGS & ANALYSE ====================
+
+
+// Logs de sécurité analysés
+
+model Log {
+  id              String    @id @default(uuid())
+  timestamp       DateTime  @default(now())
+  sourceIp        String
+  destinationIp   String?
+  destinationPort Int?
+  httpMethod      HttpMethod?
+  url             String?
+  userAgent       String?
+  referrer        String?
+  statusCode      Int?
+  responseSize    Int?
+  responseTime    Int?      // en ms
+  requestHeaders  Json?
+  requestBody     String?
+  responseHeaders Json?
+  responseBody    String?
+  protocol        Protocol
+  logType         LogType   @default(HTTP)
+  severity        Severity  @default(BAS)
+  attackType      AttackType?
+  confidence      Float?    @default(0.0)
+  isBlocked       Boolean   @default(false)
+  isFalsePositive Boolean   @default(false)
+  originalLogId   Int?      // ID du log original dans l'application surveillée
+  sourceApp       String    @default("unknown") // Nom de l'application source
+  metadata        Json?     // Données supplémentaires
+
+  analyzedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  idUser       String?   @map("user_id")
+  user         User?     @relation("UserLogs", fields: [idUser], references: [id])
+  idAlert      String?   @map("alert_id")
+  alert        Alerte?    @relation(fields: [idAlert], references: [id])
+  idIoc        String?   @map("ioc_id")
+  ioc          Ioc?      @relation(fields: [idIoc], references: [id])
+
+  @@index([timestamp])
+  @@index([sourceIp])
+  @@index([severity])
+  @@index([attackType])
+  @@index([isBlocked])
+  @@index([sourceApp])
+  @@index([analyzedAt])
+}
+
+
+// ==================== RESSOURCE CENTRALE : LOGS ====================
+
+model Log {
+  id          String    @id @default(uuid())
+  
+  // Identifiants et source
+  idOriginal  String?   // ID original dans l'application surveillée
+  sourceApp   String    @default("unknown") // Nom de l'application source
+  sourceType  SourceType @default(WEB)      // Type de source
+  
+  // Adresses réseau
+  ipAddress   String    // Adresse IP source
+  countryCode String?   // Code pays (FR, US, etc.)
+  city        String?
+  
+  // Informations HTTP
+  endpoint    String?   // URL/Endpoint appelé
+  method      HttpMethod?
+  protocol    Protocol? @default(HTTP)
+  userAgent   String?   // User-Agent du client
+  referrer    String?   // Referrer HTTP
+  
+  // Statut et performance
+  statusCode  Int?      // Code HTTP de réponse
+  responseTime Int?     // Temps de réponse en ms
+  responseSize Int?     // Taille de la réponse en octets
+  
+  // Payload et données
+  requestBody   String?   @db.Text  // Corps de la requête
+  requestHeaders Json?               // Headers de la requête
+  responseBody  String?   @db.Text  // Corps de la réponse
+  responseHeaders Json?             // Headers de la réponse
+  
+  // Métadonnées de l'utilisateur
+  idUser      String?   // ID utilisateur si authentifié
+  username    String?   // Nom d'utilisateur
+  idSession   String?   // ID de session
+  
+  // Classification et analyse
+  severity    Severity  @default(BAS)
+  category    LogCategory @default(APPLICATION)
+  attackType  AttackType? // Type d'attaque détectée
+  isSuspicious Boolean  @default(false)
+  isMalicious  Boolean  @default(false)
+  isBlocked    Boolean  @default(false)
+  
+  // Analyse SOC
+  confidence  Float     @default(0.0) // Confiance de l'analyse (0-1)
+  analyzedAt  DateTime?               // Quand l'analyse a été faite
+  analysisResult Json?                // Résultat de l'analyse
+  
+  // Données techniques
+  timestamp   DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Tags et métadonnées
+  tags        String[]  // Tags pour catégorisation
+  metadata    Json?     // Métadonnées supplémentaires
+
+  // Relations
+  alert       Alerte?    @relation(fields: [idAlert], references: [id])
+  alertId     String?   //@map("alert_id")
+  
+  ioc         Ioc?      @relation(fields: [idIoc], references: [id])
+  idIoc       String?   //@map("ioc_id")
+  
+  user        User?     @relation(fields: [idUser], references: [id])
+
+  // Index pour performances
+  @@index([timestamp])
+  @@index([ipAddress])
+  @@index([severity])
+  @@index([sourceApp])
+  @@index([method])
+  @@index([statusCode])
+  @@index([endpoint])
+  @@index([idUser])
+  @@index([isMalicious])
+  @@index([isBlocked])
+  @@index([analyzedAt])
+  @@index([attackType])
+  @@index([sourceApp, timestamp])
+  @@index([ipAddress, timestamp])
+}
+
+// ==================== ENUMS SPÉCIFIQUES AUX LOGS ====================
+
+enum SourceType {
+  WEB
+  API
+  MOBILE
+  DESKTOP
+  SERVER
+  NETWORK
+  DATABASE
+  AUTHENTICATION
+}
+
+enum LogCategory {
+  APPLICATION
+  SECURITY
+  PERFORMANCE
+  AUDIT
+  ERROR
+  ACCESS
+  BUSINESS
+  SYSTEM
+}
+
+/////////////////////////
+
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  PATCH
+  HEAD
+  OPTIONS
+}
+
+enum Protocol {
+  HTTP
+  HTTPS
+  WEBSOCKET
+  TCP
+  UDP
+}
+
+enum LogType {
+  HTTP
+  API
+  AUTH
+  DATABASE
+  SYSTEM
+  NETWORK
+}
+
+enum Severity {
+  CRITIQUE
+  ELEVEE
+  MOYENNE
+  BAS
+  INFO
+}
+
+enum AttackType {
+  BRUTE_FORCE
+  SQL_INJECTION
+  XSS
+  CSRF
+  PATH_TRAVERSAL
+  COMMAND_INJECTION
+  SSRF
+  XXE
+  DOS
+  SCANNING
+  PHISHING
+  MALWARE
+  DATA_EXFILTRATION
+  UNAUTHORIZED_ACCESS
+  CONFIGURATION_ERROR
+  DATA_LEAKAGE
+  API_ABUSE
+  BOT_ACTIVITY
+}
+
+// ==================== ALERTES ====================
+
+model Alerte {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  severity    Severity
+  status      AlertStatus @default(NEW)
+  ipAddress   String?
+  attackType  AttackType?
+  confidence  Float     @default(0.0)
+  metadata    Json? 
+  idCreateur   String? 
+
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  idAssignee  String?   //@map("assignee_id")
+  assignee    User?     @relation(fields: [idAssignee], references: [id])
+  logs        Log[]
+  commentaires    Commentaire[] 
+  actions     AlertAction[]
+    
+  createur     User?     @relation("CreatedAlerts", fields: [idCreateur], references: [id])
+  tags        AlertTag[]
+
+  @@index([severity])
+  @@index([status])
+  @@index([createdAt])
+  @@index([attackType])
+
+}
+
+
+
+// Tags pour les alertes
+model AlertTag {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String   @default("#3b82f6") // Couleur hex
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alertes Alerte[]
+}
+
+
+
+// Actions entreprises sur les alertes
+model AlertAction {
+  id          String      @id @default(uuid())
+  idAlert     String      //@map("alert_id")
+  actionType  ActionType
+  description String?     
+  metadata    Json?
+
+  performedAt DateTime    @default(now())
+  performedById String    //@map("performed_by_id")
+
+  alerte       Alerte @relation(fields: [idAlert], references: [id])
+  performedBy  User  @relation(fields: [performedById], references: [id])
+
+  @@index([idAlert])
+  @@index([actionType])
+  @@index([performedAt])
+}
+
+enum AlertStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  IGNORED
+  FAUX_POSITIF
+  ESCALATED
+}
+
+// Commentaires sur les alertes
+model Commentaire {
+  id        String   @id @default(uuid())
+  content   String
+  idAlert   String   @map("alert_id")
+  idUser    String   @map("user_id")
+  isInternal Boolean @default(false) // Commentaire interne seulement
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alerte Alerte @relation(fields: [idAlert], references: [id])
+  user  User  @relation(fields: [idUser], references: [id])
+
+  @@index([idAlert])
+  @@index([createdAt])
+}
+
+
+
+
+enum ActionType {
+  BLOCK_IP
+  UNBLOCK_IP
+  ADD_TO_WHITELIST
+  ADD_TO_BLACKLIST
+  ISOLATE_ENDPOINT
+  NOTIFY_ADMIN
+  ESCALATE
+  MARK_FALSE_POSITIVE
+  INVESTIGATE
+  CONTAIN_THREAT
+  APPLY_PATCH
+  UPDATE_RULE
+  ASSIGN
+  RESOLVE
+  REOPEN
+  COMMENT
+}
+
+// ==================== IOC (INDICATEURS DE COMPROMISSION) ====================
+
+model Ioc {
+  id          String      @id @default(uuid())
+  type        IocType
+  value       String      @unique
+  source      String      @default("MANUEL")
+  severity    Severity
+  description String?
+  firstSeen   DateTime    @default(now())
+  lastSeen    DateTime    @default(now())
+  isActive    Boolean     @default(true)
+  tags        String[]
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  logs        Log[]
+
+  @@index([type])
+  @@index([value])
+  @@index([severity])
+  @@index([isActive])
+  @@index([source])
+}
+
+
+enum IocType {
+  IP_ADDRESS
+  DOMAIN
+  URL
+  HASH_MD5
+  HASH_SHA1
+  HASH_SHA256
+  EMAIL
+  USER_AGENT
+  FILE_PATH
+  REGISTRY_KEY
+  CMD_LINE
+  JA3_FINGERPRINT
+  PROCESS_NAME
+}
+
+// ==================== DASHBOARD & MÉTRIQUES ====================
+
+// Intelligence sur les menaces (sources externes)
+model ThreatIntelligence {
+  id          String   @id @default(uuid())
+  source      String
+  iocType     IocType
+  iocValue    String
+  reputation  Float    @default(0.0)
+  categories  String[]
+  lastUpdated DateTime @default(now())
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@unique([source, iocValue])
+  @@index([iocValue])
+  @@index([reputation])
+  @@index([source])
+}
+
+
+
+// Métriques du dashboard (pré-calculées pour performance)
+model DashboardMetric {
+  id          String   @id @default(uuid())
+  metricType  MetricType
+  period      PeriodType
+  value       Float
+  count       Int?
+  timestamp   DateTime @default(now())
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([metricType])
+  @@index([timestamp])
+  @@index([period])
+  @@index([metricType, period, timestamp])
+}
+
+// Vues personnalisées du dashboard
+model DashboardView {
+  id          String   @id @default(uuid())
+  idUser      String   @map("user_id")
+  name        String
+  description String?  @db.Text
+  layout      Json     // Configuration du layout
+  filters     Json?    // Filtres appliqués
+  isDefault   Boolean  @default(false)
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [idUser], references: [id])
+
+  @@index([idUser])
+  @@unique([idUser, name])
+}
+
+
+enum MetricType {
+  TOTAL_REQUESTS
+  ATTACKS_BLOCKED
+  SUSPICIOUS_IPS
+  AVG_RESPONSE_TIME
+  ERROR_RATE
+  THREAT_LEVEL
+  TOP_ATTACK_TYPE
+  GEO_DISTRIBUTION
+  LOGS_PER_HOUR
+  ALERTS_PER_HOUR
+  FALSE_POSITIVE_RATE
+  MEAN_TIME_TO_DETECT
+  MEAN_TIME_TO_RESPOND
+  SUCCESS_RATE
+  BANDWIDTH_USAGE
+  USER_ACTIVITY
+  SYSTEM_HEALTH
+}
+
+enum PeriodType {
+  REALTIME
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+
+// ==================== RÈGLES DE DÉTECTION ====================
+
+model DetectionRegle {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  typeRegle    typeRegle
+  condition   Json     // Condition logique
+  action      ActionType
+  severity    Severity
+  isActive    Boolean  @default(true)
+  threshold   Int?     // Seuil pour déclenchement
+  cooldown    Int?     // en secondes
+  priority    Int      @default(10) // 1 = plus haute priorité
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([typeRegle])
+  @@index([isActive])
+  @@index([severity])
+  @@index([priority])
+  regleExecutions RegleExecution[]
+}
+
+model Regle {
+  id          String   @id @default(uuid())
+  nom         String   @unique
+  description String?
+  typeRegle   typeRegle
+  condition   Json     // Condition logique pour déclencher l'alerte
+  action      ActionType
+  severity    Severity
+  isActive    Boolean  @default(true)
+  threshold   Int?
+  cooldown    Int?     // en secondes
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([typeRegle])
+  @@index([isActive])
+}
+
+enum typeRegle {
+  RATE_LIMIT
+  PATTERN_MATCH
+  ANOMALY_DETECTION
+  GEO_BLOCK
+  USER_AGENT_BLOCK
+  SQL_INJECTION
+  XSS_DETECTION
+  BRUTE_FORCE
+  SCANNING_DETECTION
+  DATA_LEAKAGE
+  MALWARE_DETECTION
+  BEHAVIORAL_ANALYSIS
+  CUSTOM
+}
+
+// Historique d'exécution des règles
+model RegleExecution {
+  id            String   @id @default(uuid())
+  idRegle       String   @map("rule_id")
+  triggered     Boolean  @default(false)
+  inputData     Json?
+  result        Json?
+  executionTime Int?   // en ms
+  createdAt     DateTime @default(now())
+
+  // Relations
+  rule DetectionRegle @relation(fields: [idRegle], references: [id])
+
+  @@index([idRegle])
+  @@index([createdAt])
+  @@index([triggered])
+}
+
+// ==================== RAPPORTS ====================
+
+model Report {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  reportType  ReportType
+  periodStart DateTime
+  periodEnd   DateTime
+  status      ReportStatus @default(GENERATING)
+  filePath    String?  // Chemin vers le fichier généré
+  metadata    Json?
+  idCreatedBy String   //@map("created_by_id")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User @relation(fields: [idCreatedBy], references: [id])
+
+  @@index([reportType])
+  @@index([status])
+  @@index([idCreatedBy])
+  @@index([periodStart])
+}
+
+enum ReportType {
+  DAILY_SUMMARY
+  WEEKLY_SUMMARY
+  MONTHLY_SUMMARY
+  INCIDENT_REPORT
+  THREAT_INTELLIGENCE
+  COMPLIANCE
+  CUSTOM
+}
+
+enum ReportStatus {
+  GENERATING
+  COMPLETED
+  FAILED
+  ARCHIVED
+}
+
+// ==================== SYSTÈME & CONFIGURATION ====================
+
+// Configuration du système
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String   @db.Text
+  dataType    ConfigDataType @default(STRING)
+  category    String   @default("general")
+  description String?  @db.Text
+  isEditable  Boolean  @default(true)
+  isSecret    Boolean  @default(false)
+  idUpdatedBy String?  @map("updated_by_id")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  updatedBy User? @relation(fields: [idUpdatedBy], references: [id])
+
+  @@index([key])
+  @@index([category])
+}
+
+enum ConfigDataType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  ARRAY
+}
+
+// Audit trail des actions système
+model AuditLog {
+  id          String   @id @default(uuid())
+  idUser      String   //@map("user_id")
+  action      String
+  entityType  String?  // Type d'entité affectée
+  entityId    String?  // ID de l'entité affectée
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [idUser], references: [id])
+
+  @@index([idUser])
+  @@index([action])
+  @@index([timestamp])
+  @@index([entityType, entityId])
+}
+
+// Jobs planifiés
+model ScheduledJob {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  jobType     JobType
+  schedule    String   // Expression cron
+  isActive    Boolean  @default(true)
+  lastRun     DateTime?
+  nextRun     DateTime?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([jobType])
+  @@index([isActive])
+  @@index([nextRun])
+  jobExecutions JobExecution[]
+}
+
+enum JobType {
+  LOG_ANALYSIS
+  ALERT_CLEANUP
+  IOC_UPDATE
+  METRIC_CALCULATION
+  REPORT_GENERATION
+  DATABASE_BACKUP
+  SYSTEM_HEALTH_CHECK
+}
+
+// Historique d'exécution des jobs
+model JobExecution {
+  id           String   @id @default(uuid())
+  idJob        String   @map("job_id")
+  status       JobStatus @default(RUNNING)
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+  duration     Int?     // en ms
+  result       Json?
+  error        String?  @db.Text
+  logs         String?  @db.Text
+
+  // Relations
+  job ScheduledJob @relation(fields: [idJob], references: [id])
+
+  @@index([idJob])
+  @@index([status])
+  @@index([startedAt])
+}
+
+enum JobStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ==================== WHITELIST/BLACKLIST ====================
+
+model IPList {
+  id          String   @id @default(uuid())
+  ipAddress   String   @unique
+  listType    ListType @default(BLACKLIST)
+  reason      String?  @db.Text
+  source      String   @default("MANUAL") // MANUAL, AUTO, EXTERNAL
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  metadata    Json?
+  idCreatedBy String   @map("created_by_id")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+
+  createdBy User @relation(fields: [idCreatedBy], references: [id])
+
+  @@index([ipAddress])
+  @@index([listType])
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+enum ListType {
+  WHITELIST
+  BLACKLIST
+}
+
+// ==================== CORRÉLATION D'ÉVÉNEMENTS ====================
+
+model CorrelationRegle {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  pattern     Json     // Pattern de corrélation
+  severity    Severity
+  isActive    Boolean  @default(true)
+  window      Int      @default(300) // Fenêtre en secondes
+  threshold   Int      @default(1)   // Nombre d'événements minimum
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([severity])
+  correlatedEvents CorrelatedEvent[]
+}
+
+model CorrelatedEvent {
+  id          String   @id @default(uuid())
+  idRegle      String   @map("rule_id")
+  logIds      String[] // IDs des logs corrélés
+  severity    Severity
+  description String?  @db.Text
+  metadata    Json?
+  detectedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  // Relations
+  rule     CorrelationRegle @relation(fields: [idRegle], references: [id])
+
+  @@index([idRegle])
+  @@index([detectedAt])
+  @@index([severity])
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id          String        @id @default(uuid())
+  idUser      String        @map("user_id")
+  type        NotificationType
+  title       String
+  message     String        @db.Text
+  data        Json?         // Données supplémentaires
+  isRead      Boolean       @default(false)
+  priority    NotificationPriority @default(MEDIUM)
+
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+  readAt      DateTime?
+
+
+  user User @relation(fields: [idUser], references: [id])
+
+  @@index([idUser])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([type])
+  @@index([priority])
+}
+
+enum NotificationType {
+  ALERT
+  SYSTEM
+  SECURITY
+  MAINTENANCE
+  REPORT
+  CUSTOM
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Préférences de notification utilisateur
+// model NotificationPreference {
+//   id            String   @id @default(uuid())
+//   userId        String   @map("user_id") @unique
+//   emailAlerts   Boolean  @default(true)
+//   emailReports  Boolean  @default(true)
+//   pushAlerts    Boolean  @default(true)
+//   alertSeverity Severity @default(HIGH) // Niveau minimum pour notifier
+//   quietHours    Json?    // { start: "22:00", end: "06:00" }
+//   metadata      Json?
+//   createdAt     DateTime @default(now())
+//   updatedAt     DateTime @updatedAt
+
+//   // Relations
+//   user User @relation(fields: [userId], references: [id])
+// }
+
+// ==================== API & INTÉGRATIONS ====================
+
+// model ApiKey {
+//   id          String   @id @default(uuid())
+//   name        String
+//   key         String   @unique
+//   userId      String   @map("user_id")
+//   permissions String[] // Permissions accordées
+//   expiresAt   DateTime?
+//   lastUsedAt  DateTime?
+//   isActive    Boolean  @default(true)
+//   metadata    Json?
+//   createdAt   DateTime @default(now())
+//   updatedAt   DateTime @updatedAt
+
+//   // Relations
+//   user User @relation(fields: [userId], references: [id])
+
+//   @@index([userId])
+//   @@index([key])
+//   @@index([isActive])
+// }
+
+// Intégrations externes
+// model Integration {
+//   id          String   @id @default(uuid())
+//   name        String   @unique
+//   type        IntegrationType
+//   config      Json     // Configuration de l'intégration
+//   isActive    Boolean  @default(true)
+//   lastSync    DateTime?
+//   metadata    Json?
+//   createdById String   @map("created_by_id")
+//   createdAt   DateTime @default(now())
+//   updatedAt   DateTime @updatedAt
+
+//   // Relations
+//   createdBy User @relation(fields: [createdById], references: [id])
+
+//   @@index([type])
+//   @@index([isActive])
+// }
+
+// enum IntegrationType {
+//   SIEM
+//   TICKETING
+//   CHAT
+//   EMAIL
+//   SMS
+//   THREAT_INTELLIGENCE
+//   CUSTOM
+// }

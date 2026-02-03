@@ -1,0 +1,16 @@
+
+
+
+
+prisma/
+├── schema.prisma          # Schema principal
+├── seed.ts               # Données de test
+├── migrations/
+│   └── ...               # Migrations
+└── scripts/
+    ├── setup-minisoc.sql # Script SQL d'initialisation
+    └── cleanup.sql       # Nettoyage
+
+
+
+    
